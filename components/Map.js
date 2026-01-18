@@ -6,14 +6,14 @@ import "leaflet-defaulticon-compatibility";
 
 export default function Map() {
   // Default coordinates (London) - you can change this to your location
-  const position = [51.505, -0.09]; 
+  const position = [51.505, -0.09];
 
   return (
     // Crucial: We must set a specific height and width style here
-    <MapContainer 
-      center={position} 
-      zoom={13} 
-      scrollWheelZoom={false} 
+    <MapContainer
+      center={position}
+      zoom={13}
+      scrollWheelZoom={false}
       style={{ height: "100%", width: "100%", minHeight: "300px" }}
     >
       <TileLayer
