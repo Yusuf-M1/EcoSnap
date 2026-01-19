@@ -1,199 +1,105 @@
-# EcoSnap 🌿
+# 🌿 EcoSnap
+> **Gamifying Environmental Restoration. Snap. Report. Save Earth.**
 
-**Snap. Report. Save Earth.**
-
-EcoSnap is a community-driven platform that empowers citizens to report environmental issues and helps authorities manage cleanup operations efficiently.
-
----
-
-## Features
-
-### For Citizens (Helpers)
-- 📸 **Report Issues** - Snap photos of waste and pollution
-- 📍 **Precise Locations** - GPS-tagged reports for accurate tracking
-- 🎮 **Gamification** - Earn points and level up for community contributions
-- 📊 **Track Impact** - See how your reports lead to real change
-
-### For Authorities
-- 🛡️ **Dashboard** - Manage all community reports in one place
-- ✅ **Resolve Reports** - Mark issues as resolved and award points to helpers
-- 📈 **Analytics** - Track city cleanliness trends
-- 🗺️ **Map View** - Visualize all reports geographically
+![Next.js](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)
+![Supabase](https://img.shields.io/badge/Supabase-Database-green?style=flat-square&logo=supabase)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind-CSS-blue?style=flat-square&logo=tailwind-css)
 
 ---
 
-## Tech Stack
+## 🌎 The Problem
+Urban pollution and illegal dumping are escalating crises, yet citizens often feel powerless to act.
+* **The Disconnect:** Residents see trash daily but lack an easy way to report it.
+* **The Motivation Gap:** There is no incentive for individuals to go out of their way to help.
+* **The Data Void:** Authorities lack real-time, verified data on waste hotspots.
 
-- **Framework**: Next.js 14 (App Router)
-- **Database & Auth**: Supabase
-- **Styling**: Tailwind CSS + Custom Glassmorphism
-- **Animations**: Framer Motion
-- **Maps**: Leaflet + React Leaflet
-- **UI Components**: Sonner (Toast notifications)
-
----
-
-## Getting Started
-
-### Prerequisites
-- Node.js 18+ and npm
-- Supabase account
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <your-repo-url>
-   cd EcoSnap
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables**
-   
-   Copy `.env.example` to `.env.local`:
-   ```bash
-   copy .env.example .env.local
-   ```
-   
-   Then update `.env.local` with your Supabase credentials:
-   ```env
-   NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-   ```
-
-4. **Set up Supabase**
-   
-   Create the following tables in your Supabase project:
-
-   **profiles table:**
-   ```sql
-   create table profiles (
-     id uuid references auth.users on delete cascade primary key,
-     username text not null,
-     role text not null check (role in ('HELPER', 'AUTHORITY')),
-     points integer default 0,
-     level integer default 1,
-     created_at timestamp with time zone default now()
-   );
-   ```
-
-   **reports table:**
-   ```sql
-   create table reports (
-     id uuid default gen_random_uuid() primary key,
-     description text not null,
-     location text not null,
-     image_url text,
-     status text default 'PENDING' check (status in ('PENDING', 'RESOLVED')),
-     author_id uuid references profiles(id) on delete cascade,
-     author_name text not null,
-     created_at timestamp with time zone default now()
-   );
-   ```
-
-   **Create storage bucket** for report images:
-   - Go to Supabase Storage
-   - Create a public bucket named `report-images`
-
-5. **Run the development server**
-   ```bash
-   npm run dev
-   ```
-
-6. **Open your browser**
-   
-   Navigate to [http://localhost:3000](http://localhost:3000)
+## 💡 The Solution
+**EcoSnap** is a full-stack web application that gamifies civic duty. It connects concerned citizens ("Helpers") directly with local authorities.
+1.  **See it:** Users spot waste and snap a photo.
+2.  **Map it:** Our interactive map automatically pins the precise location.
+3.  **Gamify it:** Users earn **XP and Levels** for every report verified by authorities.
 
 ---
 
-## Project Structure
+## ✨ Key Features
 
-```
-EcoSnap/
-├── app/
-│   ├── authority/         # Authority dashboard
-│   ├── helper/            # Helper dashboard
-│   ├── services/          # API service layer
-│   ├── utils/             # Utilities and constants
-│   ├── globals.css        # Global styles
-│   ├── layout.js          # Root layout
-│   └── page.js            # Landing page
-├── components/            # Reusable React components
-├── hooks/                 # Custom React hooks
-├── public/                # Static assets
-└── .env.local            # Environment variables (not in git)
-```
+### 👤 For Helpers (Citizens)
+* **📸 Evidence Upload:** Secure image uploading to verify reports.
+* **📍 Interactive Mapping:** Drag-and-drop pins to mark exact waste locations.
+* **🏆 Leveling System:** Earn points (XP) to level up from "Novice" to "Eco-Guardian."
+
+### 🛡️ For Authorities (Admins)
+* **📊 Live Dashboard:** View a real-time feed of all pending reports.
+* **✅ One-Click Resolve:** Verify cleanups and automatically award points to the reporter.
+* **🗺️ Location Intelligence:** Visualize report clusters to allocate cleaning crews efficiently.
 
 ---
 
-## Key Features Implementation
-
-### Authentication Flow
-- Email/password signup with Supabase Auth
-- Role-based access control (Helper vs Authority)
-- Protected routes with authentication checks
-
-### Gamification System
-- Points awarded for:
-  - Submitting reports: +10 points (pending)
-  - Report resolved: +20 points
-- Level calculation: `floor(points / 100) + 1`
-
-### Image Upload
-- Direct upload to Supabase Storage
-- Preview before submission
-- Public URLs for easy access
-
-### Service Layer Architecture
-All database operations are abstracted into services:
-- `reportService` - Report CRUD operations
-- `profileService` - User profile management
+## 🛠️ Tech Stack
+* **Frontend:** Next.js 14 (App Router), React, Tailwind CSS
+* **Backend:** Supabase (PostgreSQL, Auth, Storage)
+* **Mapping:** Leaflet.js & OpenStreetMap
+* **UI/UX:** Framer Motion (Animations), Glassmorphism Design
 
 ---
 
-## Scripts
+## 🚀 Quick Start
 
+### 1. Installation
+Clone the repo and install dependencies.
 ```bash
-npm run dev      # Start development server
-npm run build    # Build for production
-npm run start    # Start production server
-npm run lint     # Run ESLint
-```
+git clone [https://github.com/yourusername/ecosnap.git](https://github.com/yourusername/ecosnap.git)
+cd ecosnap
+npm install --legacy-peer-deps
 
----
+### 2. Environment Setup
+Create a .env.local file in the root directory and add your Supabase keys:
 
-## Environment Variables
+Bash
+NEXT_PUBLIC_SUPABASE_URL=your_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 
-| Variable | Description |
-|----------|-------------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anonymous key |
+### 3. Database Schema
+Run this SQL in your Supabase SQL Editor to set up the tables and security:
 
-> ⚠️ **Security Note**: Never commit `.env.local` to version control. API keys should only exist in `.env.local` locally and in your hosting provider's environment variables in production.
+<details> <summary>Click to view SQL Schema</summary>
 
----
+SQL
+-- Profiles Table
+create table profiles (
+  id uuid references auth.users on delete cascade primary key,
+  username text,
+  role text default 'HELPER',
+  points int default 0,
+  level int default 1
+);
 
-## Deployment
+-- Reports Table
+create table reports (
+  id uuid default gen_random_uuid() primary key,
+  description text,
+  location text,
+  latitude float8,
+  longitude float8,
+  image_url text,
+  status text default 'PENDING',
+  author_id uuid references profiles(id),
+  author_name text,
+  created_at timestamp with time zone default now()
+);
 
-### Vercel (Recommended)
+-- Enable Security
+alter table profiles enable row level security;
+alter table reports enable row level security;
+create policy "Public Access" on profiles for select using (true);
+create policy "Public Access" on reports for select using (true);
+create policy "Authenticated Insert" on reports for insert to authenticated with check (true);
+create policy "Authenticated Update" on reports for update using (true);
 
-1. Push your code to GitHub
-2. Import project in Vercel
-3. Add environment variables in Vercel dashboard
-4. Deploy!
+-- Storage Bucket
+insert into storage.buckets (id, name, public) values ('report-images', 'report-images', true);
+</details>
 
-### Other Platforms
-
-Compatible with any Next.js hosting provider:
-- Netlify
-- Railway
-- AWS Amplify
-- Self-hosted with Docker
-
----
-
-**Built with 💚 for a cleaner planet**
+### 4. Run the App
+Bash
+npm run dev
