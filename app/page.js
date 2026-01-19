@@ -1,8 +1,11 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from './utils/supabaseClient'; // Ensure this path matches your file structure
+import { supabase } from './utils/supabaseClient';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
+import { MESSAGES, ROLES } from './utils/constants';
+import ThemeToggle from '../components/ThemeToggle';
 
 // --- SUB-COMPONENT: Image Comparison Slider ---
 const ImageComparisonSlider = () => {
@@ -92,46 +95,89 @@ const AuthModal = ({ isOpen, onClose, initialRole }) => {
   // Update role if prop changes
   useEffect(() => { setForm(f => ({ ...f, role: initialRole })); }, [initialRole]);
 
+  // Listen for email verification
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', session.user.id)
+            .single();
+
+          toast.success(MESSAGES.WELCOME_BACK);
+          if (profile?.role === ROLES.AUTHORITY) router.push('/authority');
+          else router.push('/helper');
+        }
+      }
+    );
+    return () => subscription.unsubscribe();
+  }, [router]);
+
   const handleAuth = async (e) => {
     e.preventDefault();
     setLoading(true);
 
-    if (isLogin) {
-      // LOGIN LOGIC
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: form.email,
-        password: form.password,
-      });
+    try {
+      if (isLogin) {
+        // LOGIN LOGIC
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: form.email,
+          password: form.password,
+        });
 
-      if (error) {
-        alert("Login Error: " + error.message);
-      } else {
-        // Redirect based on role in profile
-        const { data: profile } = await supabase.from('profiles').select('role').eq('id', data.user.id).single();
-        if (profile?.role === 'AUTHORITY') router.push('/authority');
-        else router.push('/helper');
-      }
-    } else {
-      // SIGN UP LOGIC
-      const { data, error } = await supabase.auth.signUp({
-        email: form.email,
-        password: form.password,
-      });
+        if (error) {
+          toast.error(MESSAGES.LOGIN_ERROR + ': ' + error.message);
+        } else {
+          // Redirect based on role in profile
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', data.user.id)
+            .single();
 
-      if (error) {
-        alert("Signup Error: " + error.message);
-      } else {
-        if (data?.user) {
-          // Create Profile
-          await supabase.from('profiles').insert([{ id: data.user.id, username: form.username, role: form.role }]);
-          alert("Account created! Logging you in...");
-          // Auto login redirect
-          if (form.role === 'AUTHORITY') router.push('/authority');
+          toast.success(MESSAGES.WELCOME_BACK);
+          if (profile?.role === ROLES.AUTHORITY) router.push('/authority');
           else router.push('/helper');
         }
+      } else {
+        // SIGN UP LOGIC
+        const { data, error } = await supabase.auth.signUp({
+          email: form.email,
+          password: form.password,
+          options: {
+            emailRedirectTo: `${window.location.origin}`,
+            data: { username: form.username, role: form.role },
+          },
+        });
+
+        if (error) {
+          toast.error(MESSAGES.SIGNUP_ERROR + ': ' + error.message);
+        } else if (data?.user) {
+          // Create profile in database
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert([{
+              id: data.user.id,
+              username: form.username,
+              role: form.role
+            }]);
+
+          if (profileError) {
+            toast.error('Profile creation failed: ' + profileError.message);
+          } else {
+            toast.success(MESSAGES.VERIFICATION_SENT);
+            setIsLogin(true); // Switch to login mode
+            onClose(); // Close modal
+          }
+        }
       }
+    } catch (error) {
+      toast.error('An unexpected error occurred: ' + error.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   if (!isOpen) return null;
@@ -212,7 +258,8 @@ export default function LandingPage() {
             <a href="#roles" className="text-sm font-semibold hover:text-primary transition-colors">Join Us</a>
           </nav>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <ThemeToggle />
             <button onClick={() => openAuth('HELPER')} className="hidden sm:flex h-11 items-center justify-center rounded-xl bg-[#0f1a17] dark:bg-white px-6 text-sm font-bold text-white dark:text-[#0f1a17] hover:bg-opacity-90 transition-all">
               Login
             </button>

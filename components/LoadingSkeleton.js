@@ -1,4 +1,6 @@
-export default function LoadingSkeleton({ count = 1, height = "h-24" }) {
+import { memo } from 'react';
+
+const LoadingSkeleton = ({ count = 1, height = "h-24" }) => {
     return (
         <div className="space-y-4">
             {[...Array(count)].map((_, i) => (
@@ -13,4 +15,6 @@ export default function LoadingSkeleton({ count = 1, height = "h-24" }) {
             ))}
         </div>
     );
-}
+};
+
+export default memo(LoadingSkeleton);

@@ -6,22 +6,27 @@ export function useAuth(requiredRole = null) {
     const router = useRouter();
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
 
     useEffect(() => {
         const checkAuth = async () => {
             try {
-                const { data: { user: authUser } } = await supabase.auth.getUser();
+                const { data: { user: authUser }, error: authError } = await supabase.auth.getUser();
+
+                if (authError) throw authError;
 
                 if (!authUser) {
                     router.push('/');
                     return;
                 }
 
-                const { data: profile } = await supabase
+                const { data: profile, error: profileError } = await supabase
                     .from('profiles')
                     .select('*')
                     .eq('id', authUser.id)
                     .single();
+
+                if (profileError) throw profileError;
 
                 if (requiredRole && profile?.role !== requiredRole) {
                     // Redirect based on their actual role
@@ -31,8 +36,9 @@ export function useAuth(requiredRole = null) {
                 }
 
                 setUser(profile);
-            } catch (error) {
-                console.error('Auth error:', error);
+            } catch (err) {
+                console.error('Auth error:', err);
+                setError(err.message);
                 router.push('/');
             } finally {
                 setLoading(false);
@@ -42,5 +48,6 @@ export function useAuth(requiredRole = null) {
         checkAuth();
     }, [requiredRole, router]);
 
-    return { user, loading };
+    return { user, loading, error };
 }
+

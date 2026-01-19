@@ -1,128 +1,460 @@
 "use client";
-import { useState } from 'react';
-import { supabase } from '../utils/supabaseClient';
-import { motion } from 'framer-motion';
+import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import { useAuth } from '../../hooks/useAuth';
-import Layout from '../../components/Layout';
-import LoadingSkeleton from '../../components/LoadingSkeleton';
-
+import { supabase } from '../utils/supabaseClient';
+import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
+import ThemeToggle from '../../components/ThemeToggle';
 
-// This disables SSR for the Map so it doesn't crash
-const Map = dynamic(() => import('../../components/Map'), {
+// Dynamic Map Import (Prevents SSR Crash)
+const ReportMap = dynamic(() => import('../../components/ReportMap'), {
   ssr: false,
-  loading: () => <p>Loading Map...</p>
+  loading: () => (
+    <div className="h-full w-full bg-emerald-50 dark:bg-zinc-800 animate-pulse flex items-center justify-center rounded-[1.5rem]">
+      <div className="flex flex-col items-center space-y-3">
+        <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+        <span className="text-emerald-600 dark:text-emerald-400 font-medium">Loading Map...</span>
+      </div>
+    </div>
+  )
 });
 
-export default function HelperPage() {
-  const { user, loading } = useAuth('HELPER');
-  const [report, setReport] = useState({ description: '', location: '', imageUrl: '' });
-  const [imagePreview, setImagePreview] = useState(null);
-  const [submitting, setSubmitting] = useState(false);
+export default function HelperDashboard() {
+  const router = useRouter();
+  const fileInputRef = useRef(null);
 
-  const handleImageChange = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result);
-      };
-      reader.readAsDataURL(file);
+  // State Management
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [description, setDescription] = useState('');
+  const [locationText, setLocationText] = useState('');
+  const [coordinates, setCoordinates] = useState({ lat: 51.505, lng: -0.09 });
+  const [file, setFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
+
+  // Fetch User on Mount
+  useEffect(() => {
+    const getUser = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          router.push('/');
+          return;
+        }
+
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        setUser(profile);
+
+        // Get User's Location
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              setCoordinates({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+            },
+            (error) => {
+              console.log('Location access denied, using default coordinates');
+            }
+          );
+        }
+      } catch (error) {
+        toast.error('Failed to load user data');
+        router.push('/');
+      } finally {
+        setInitialLoading(false);
+      }
+    };
+    getUser();
+  }, [router]);
+
+  // Handle Image Selection
+  const handleFileChange = (e) => {
+    const selectedFile = e.target.files[0];
+    if (selectedFile) {
+      // Validate file type
+      if (!selectedFile.type.startsWith('image/')) {
+        toast.error('Please select an image file');
+        return;
+      }
+      // Validate file size (5MB limit)
+      if (selectedFile.size > 5 * 1024 * 1024) {
+        toast.error('Image size should be less than 5MB');
+        return;
+      }
+      setFile(selectedFile);
+      setPreviewUrl(URL.createObjectURL(selectedFile));
     }
   };
 
-  const submitReport = async (e) => {
-    e.preventDefault();
-    if (!user) return;
+  // Remove Image
+  const handleRemoveImage = (e) => {
+    e.stopPropagation();
+    setFile(null);
+    setPreviewUrl(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
 
-    setSubmitting(true);
+  // Submit Report
+  const handleSubmit = async () => {
+    // Validation
+    if (!file) {
+      toast.error("Please upload a photo of the issue");
+      return;
+    }
+    if (!description.trim()) {
+      toast.error("Please provide a description");
+      return;
+    }
+
+    setLoading(true);
+    const toastId = toast.loading('Uploading report...');
+
     try {
-      const { error } = await supabase.from('reports').insert([
+      // Upload Image
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}_${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage
+        .from('report-images')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      // Get Public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('report-images')
+        .getPublicUrl(fileName);
+
+      // Save to Database
+      const { error: dbError } = await supabase.from('reports').insert([
         {
-          description: report.description,
-          location: report.location,
+          description: description.trim(),
+          location: locationText.trim() || `${coordinates.lat.toFixed(4)}, ${coordinates.lng.toFixed(4)}`,
+          latitude: coordinates.lat,
+          longitude: coordinates.lng,
+          image_url: publicUrl,
           author_id: user.id,
-          author_name: user.username
+          author_name: user.username,
+          status: 'PENDING'
         }
       ]);
 
-      if (error) throw error;
+      if (dbError) throw dbError;
 
-      toast.success('🎉 Report Submitted! +10 Points Pending Verification.');
-      setReport({ description: '', location: '', imageUrl: '' });
-      setImagePreview(null);
+      // Success
+      toast.success('Report submitted successfully! +10 XP 🎉', { id: toastId });
+
+      // Reset Form
+      setDescription('');
+      setLocationText('');
+      setFile(null);
+      setPreviewUrl(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
     } catch (error) {
-      toast.error('Failed to submit report: ' + error.message);
+      console.error('Submit error:', error);
+      toast.error(error.message || 'Failed to submit report', { id: toastId });
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
   };
 
-  if (loading) return (
-    <div className="min-h-screen p-6">
-      <LoadingSkeleton count={3} />
-    </div>
-  );
+  // Logout Handler
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      toast.error('Logout failed');
+    } else {
+      toast.success('Logged out successfully');
+      router.push('/');
+    }
+  };
+
+  // Loading State
+  if (initialLoading) {
+    return (
+      <div className="min-h-screen bg-[#ecfdf5] dark:bg-zinc-950 flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-emerald-600 dark:text-emerald-400 font-medium">Loading Dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) return null;
 
   return (
-    <Layout user={user} title="🌿 Report Trash">
-      <div className="grid md:grid-cols-2 gap-8">
-        <motion.div initial={{ x: -50 }} animate={{ x: 0 }} className="glass p-6 rounded-xl">
-          <h2 className="text-xl font-bold mb-4">📸 Submit Report</h2>
-          <form onSubmit={submitReport} className="space-y-4">
-            <div className="border-2 border-dashed border-white/30 rounded-lg h-32 flex items-center justify-center cursor-pointer hover:bg-white/10 transition relative overflow-hidden">
-              {imagePreview ? (
-                <img src={imagePreview} alt="Preview" className="h-full w-full object-cover" />
-              ) : (
-                <p>Upload Photo (Demo)</p>
-              )}
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleImageChange}
-                className="absolute inset-0 opacity-0 cursor-pointer"
-              />
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="min-h-screen p-4 md:p-6 lg:p-8 transition-colors duration-200 font-sans bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950 text-gray-800 dark:text-gray-100"
+    >
+      <div className="max-w-[1600px] mx-auto space-y-6">
+
+        {/* HEADER */}
+        <motion.header
+          initial={{ y: -20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.5 }}
+          className="bg-white/70 dark:bg-zinc-900/70 backdrop-blur-md rounded-full px-6 py-4 flex flex-col md:flex-row justify-between items-center shadow-sm border border-white/50 dark:border-white/10 sticky top-4 z-40"
+        >
+          <div className="flex items-center space-x-3 mb-2 md:mb-0">
+            <motion.div
+              whileHover={{ rotate: 360 }}
+              transition={{ duration: 0.6 }}
+              className="bg-gradient-to-tr from-emerald-400 to-green-300 rounded-full p-2 text-white shadow-lg shadow-emerald-200 dark:shadow-none"
+            >
+              <span className="material-symbols-outlined">recycling</span>
+            </motion.div>
+            <h1 className="text-xl md:text-2xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-emerald-600 to-teal-500">
+              EcoSnap
+            </h1>
+          </div>
+          <div className="flex items-center space-x-4">
+            <motion.div
+              initial={{ scale: 0.9 }}
+              animate={{ scale: 1 }}
+              className="hidden md:flex flex-col items-end"
+            >
+              <span className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider">Current Level</span>
+              <div className="flex items-center space-x-2">
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">Level {user.level || 1}</span>
+                <span className="text-gray-300 dark:text-gray-600">|</span>
+                <span className="text-gray-600 dark:text-gray-400 text-sm">{user.points || 0} XP</span>
+              </div>
+            </motion.div>
+            <div className="flex items-center space-x-3 bg-white dark:bg-zinc-800 rounded-full py-1.5 px-2 pl-4 border border-gray-100 dark:border-zinc-700 shadow-sm">
+              <span className="text-sm font-medium">
+                Hello, <span className="text-emerald-600 dark:text-emerald-400">{user.username}</span>
+              </span>
+              <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-700 dark:text-emerald-400">
+                <span className="material-symbols-outlined text-sm">person</span>
+              </div>
+            </div>
+            <ThemeToggle />
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleLogout}
+              className="hidden md:flex items-center space-x-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 rounded-full transition-colors border border-red-200 dark:border-red-800"
+            >
+              <span className="material-symbols-outlined text-sm">logout</span>
+              <span className="text-sm font-medium">Logout</span>
+            </motion.button>
+          </div>
+        </motion.header>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* LEFT COLUMN: UPLOAD & FORM */}
+          <motion.div
+            initial={{ x: -50, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="lg:col-span-8 flex flex-col gap-6"
+          >
+
+            {/* UPLOAD AREA */}
+            <motion.div
+              whileHover={{ y: -2 }}
+              className="bg-white dark:bg-zinc-900 rounded-[2rem] p-8 shadow-sm border border-emerald-50 dark:border-zinc-800 relative overflow-hidden group hover:shadow-md transition-all duration-300"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center space-x-3">
+                  <span className="material-symbols-outlined text-emerald-500">photo_camera</span>
+                  <h2 className="text-lg font-bold text-gray-800 dark:text-white">Evidence Upload</h2>
+                </div>
+                {previewUrl && (
+                  <motion.button
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    onClick={handleRemoveImage}
+                    className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-full transition-colors"
+                    title="Remove image"
+                  >
+                    <span className="material-symbols-outlined text-sm">close</span>
+                  </motion.button>
+                )}
+              </div>
+
+              <motion.div
+                whileHover={{ scale: previewUrl ? 1 : 1.02 }}
+                onClick={() => fileInputRef.current.click()}
+                className="w-full h-64 border-2 border-dashed border-emerald-200 dark:border-zinc-700 rounded-3xl flex flex-col items-center justify-center cursor-pointer hover:bg-emerald-50/50 dark:hover:bg-zinc-800/50 hover:border-emerald-400 transition-all relative overflow-hidden"
+              >
+                <AnimatePresence mode="wait">
+                  {previewUrl ? (
+                    <motion.img
+                      key="preview"
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      src={previewUrl}
+                      alt="Preview"
+                      className="w-full h-full object-cover rounded-3xl"
+                    />
+                  ) : (
+                    <motion.div
+                      key="placeholder"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="flex flex-col items-center"
+                    >
+                      <motion.div
+                        animate={{ y: [0, -10, 0] }}
+                        transition={{ duration: 2, repeat: Infinity }}
+                        className="bg-emerald-100 dark:bg-emerald-900/30 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform"
+                      >
+                        <span className="material-symbols-outlined text-emerald-600 dark:text-emerald-400 text-3xl">cloud_upload</span>
+                      </motion.div>
+                      <span className="text-gray-500 dark:text-gray-400 font-medium">Upload Photo</span>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  className="hidden"
+                  accept="image/*"
+                  onChange={handleFileChange}
+                />
+              </motion.div>
+            </motion.div>
+
+            {/* DETAILS & LOCATION */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-grow">
+              <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="bg-white dark:bg-zinc-900 rounded-[2rem] p-6 shadow-sm border border-emerald-50 dark:border-zinc-800 flex flex-col hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-center space-x-2 mb-4">
+                  <span className="material-symbols-outlined text-emerald-500">description</span>
+                  <h2 className="text-lg font-bold">Details</h2>
+                </div>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="flex-grow w-full bg-gray-50 dark:bg-zinc-800/50 text-gray-900 dark:text-gray-100 rounded-2xl p-4 placeholder-gray-400 dark:placeholder-gray-500 border-0 focus:ring-2 focus:ring-emerald-500/50 resize-none transition-all"
+                  placeholder="Describe the trash type, size, and any other relevant details..."
+                  rows="6"
+                ></textarea>
+                <div className="mt-2 text-xs text-gray-400 dark:text-gray-500 text-right">
+                  {description.length} characters
+                </div>
+              </motion.div>
+
+              <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
+                className="bg-white dark:bg-zinc-900 rounded-[2rem] p-6 shadow-sm border border-emerald-50 dark:border-zinc-800 flex flex-col hover:shadow-md transition-shadow"
+              >
+                <div className="flex items-center space-x-2 mb-4">
+                  <span className="material-symbols-outlined text-emerald-500">pin_drop</span>
+                  <h2 className="text-lg font-bold">Location Details</h2>
+                </div>
+                <div className="space-y-4 flex-grow">
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 material-symbols-outlined text-sm">search</span>
+                    <input
+                      value={locationText}
+                      onChange={(e) => setLocationText(e.target.value)}
+                      className="w-full bg-gray-50 dark:bg-zinc-800/50 text-gray-900 dark:text-gray-100 rounded-2xl pl-12 pr-4 py-3 placeholder-gray-400 dark:placeholder-gray-500 border-0 focus:ring-2 focus:ring-emerald-500/50 transition-all"
+                      placeholder="e.g. Central Park (Optional)"
+                      type="text"
+                    />
+                  </div>
+                  <motion.div
+                    initial={{ scale: 0.95 }}
+                    animate={{ scale: 1 }}
+                    className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 p-4 rounded-2xl border border-emerald-100 dark:border-emerald-800/30"
+                  >
+                    <div className="flex items-center space-x-2 mb-2">
+                      <span className="material-symbols-outlined text-emerald-600 dark:text-emerald-400 text-sm">location_on</span>
+                      <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-200">GPS Coordinates</p>
+                    </div>
+                    <p className="text-sm text-emerald-700 dark:text-emerald-300 font-mono">
+                      {coordinates.lat.toFixed(6)}, {coordinates.lng.toFixed(6)}
+                    </p>
+                  </motion.div>
+                </div>
+              </motion.div>
             </div>
 
-            <textarea
-              placeholder="Description & Tag Authority (@CityCouncil)..."
-              className="w-full p-3 rounded bg-white/20 placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-green-400"
-              value={report.description}
-              onChange={e => setReport({ ...report, description: e.target.value })}
-              required
-            />
-
-            <input
-              placeholder="Location Details"
-              className="w-full p-3 rounded bg-white/20 placeholder-white/70 focus:outline-none focus:ring-2 focus:ring-green-400"
-              value={report.location}
-              onChange={e => setReport({ ...report, location: e.target.value })}
-              required
-            />
-
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full btn-glass py-3 rounded font-bold text-green-300 disabled:opacity-50"
+            {/* SUBMIT BUTTON */}
+            <motion.button
+              whileHover={{ scale: 1.02, y: -2 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={handleSubmit}
+              disabled={loading || !file || !description.trim()}
+              className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed text-white font-bold text-lg py-5 rounded-full shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 disabled:shadow-none transition-all duration-300 flex items-center justify-center space-x-2 group"
             >
-              {submitting ? 'Submitting...' : 'Submit Report'}
-            </button>
-          </form>
-        </motion.div>
+              {loading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Submitting Report...</span>
+                </>
+              ) : (
+                <>
+                  <span>Submit Report</span>
+                  <motion.span
+                    animate={{ x: [0, 5, 0] }}
+                    transition={{ duration: 1.5, repeat: Infinity }}
+                    className="material-symbols-outlined"
+                  >
+                    send
+                  </motion.span>
+                </>
+              )}
+            </motion.button>
 
-        {/* Map Section */}
-        <div className="glass p-6 rounded-xl flex flex-col h-[400px]">
-          <h2 className="text-xl font-bold mb-4">📍 Location Preview</h2>
+          </motion.div>
 
-          {/* The Map Container */}
-          <div className="flex-1 rounded-lg overflow-hidden border border-white/30 relative z-0">
-            <Map />
-          </div>
+          {/* RIGHT COLUMN: MAP */}
+          <motion.div
+            initial={{ x: 50, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+            className="lg:col-span-4 h-full"
+          >
+            <div className="bg-white dark:bg-zinc-900 rounded-[2rem] p-2 h-full min-h-[500px] lg:min-h-[700px] shadow-sm border border-emerald-50 dark:border-zinc-800 flex flex-col relative group hover:shadow-md transition-shadow">
+              <motion.div
+                initial={{ y: -10, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.4 }}
+                className="absolute top-6 left-6 z-[1000] bg-white/90 dark:bg-zinc-800/90 backdrop-blur px-4 py-2 rounded-full shadow-sm flex items-center space-x-2 pointer-events-none"
+              >
+                <span className="material-symbols-outlined text-emerald-500">map</span>
+                <span className="font-bold text-sm">Pinpoint Location</span>
+              </motion.div>
+
+              <div className="relative w-full h-full rounded-[1.5rem] overflow-hidden z-0">
+                <ReportMap setCoordinates={setCoordinates} coordinates={coordinates} />
+              </div>
+            </div>
+          </motion.div>
+
         </div>
+
+        {/* Mobile Logout */}
+        <motion.button
+          whileTap={{ scale: 0.95 }}
+          onClick={handleLogout}
+          className="md:hidden w-full flex items-center justify-center space-x-2 px-4 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 rounded-full transition-colors border border-red-200 dark:border-red-800"
+        >
+          <span className="material-symbols-outlined text-sm">logout</span>
+          <span className="text-sm font-medium">Logout</span>
+        </motion.button>
       </div>
-    </Layout>
+    </motion.div>
   );
 }

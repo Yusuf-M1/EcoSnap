@@ -1,91 +1,199 @@
-🌿 Project Title: EcoSnap
-Tagline: Gamifying Environmental Restoration. Snap. Report. Save Earth.
+# EcoSnap 🌿
 
-1. The Problem (The "Why")
-Environmental pollution—specifically urban waste and illegal dumping—is a massive global crisis. While many citizens witness these issues daily, they often lack the motivation or the tools to do anything about it.
+**Snap. Report. Save Earth.**
 
-The Disconnect: Citizens feel powerless to report issues effectively.
+EcoSnap is a community-driven platform that empowers citizens to report environmental issues and helps authorities manage cleanup operations efficiently.
 
-The Motivation Gap: There is no incentive for individuals to go out of their way to report or clean up trash.
+---
 
-The Data Void: Local authorities (sanitation departments) often lack real-time, verified data on where waste hotspots are located.
+## Features
 
-EcoSnap was built to bridge this gap. It turns environmental responsibility into a rewarding, interactive game, connecting concerned citizens ("Helpers") directly with cleaning officials ("Authorities").
+### For Citizens (Helpers)
+- 📸 **Report Issues** - Snap photos of waste and pollution
+- 📍 **Precise Locations** - GPS-tagged reports for accurate tracking
+- 🎮 **Gamification** - Earn points and level up for community contributions
+- 📊 **Track Impact** - See how your reports lead to real change
 
-2. The Solution (The "What")
-EcoSnap is a full-stack web application that gamifies the process of waste reporting and cleanup. It creates a symbiotic ecosystem between two distinct user roles:
+### For Authorities
+- 🛡️ **Dashboard** - Manage all community reports in one place
+- ✅ **Resolve Reports** - Mark issues as resolved and award points to helpers
+- 📈 **Analytics** - Track city cleanliness trends
+- 🗺️ **Map View** - Visualize all reports geographically
 
-The Helper (Citizen): Users who spot trash, report it via the app, and earn XP (Experience Points) and Levels for their contributions.
+---
 
-The Authority (Official): Admin users who view these reports on a dashboard, verify the issues, and mark them as "Resolved," which triggers the reward system for the Helper.
+## Tech Stack
 
-By combining civic duty with gamification, EcoSnap drives behavioral change, making environmental stewardship addictive and fun.
+- **Framework**: Next.js 14 (App Router)
+- **Database & Auth**: Supabase
+- **Styling**: Tailwind CSS + Custom Glassmorphism
+- **Animations**: Framer Motion
+- **Maps**: Leaflet + React Leaflet
+- **UI Components**: Sonner (Toast notifications)
 
-3. How It Works (The User Flow)
-Phase 1: Authentication & Role Selection
-New users sign up and are immediately asked to identify their role: Helper or Authority.
+---
 
-Tech Detail: We use Supabase Auth to handle secure login/signup. Upon registration, a trigger (or API call) automatically creates a corresponding entry in our public profiles database table, storing their Role, Points (0), and Level (1).
+## Getting Started
 
-Phase 2: Reporting (The Helper's Journey)
-A Helper logs in and sees their Gamified Dashboard, displaying their current Level and XP.
+### Prerequisites
+- Node.js 18+ and npm
+- Supabase account
 
-They encounter a pile of trash. They use the "Snap & Report" feature.
+### Installation
 
-Input: They provide a description (e.g., "Plastic waste near river"), the location, and upload a photo (simulated in MVP).
+1. **Clone the repository**
+   ```bash
+   git clone <your-repo-url>
+   cd EcoSnap
+   ```
 
-Tech Detail: This data is pushed to the reports table in our Supabase PostgreSQL database with a status of PENDING.
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-Phase 3: Verification (The Authority's Journey)
-An Authority logs in and sees the Admin Dashboard. This is a command center showing a live feed of all incoming reports sorted by urgency (time).
+3. **Set up environment variables**
+   
+   Copy `.env.example` to `.env.local`:
+   ```bash
+   copy .env.example .env.local
+   ```
+   
+   Then update `.env.local` with your Supabase credentials:
+   ```env
+   NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+   ```
 
-They can view the details: Description, Reporter Name, and Location.
+4. **Set up Supabase**
+   
+   Create the following tables in your Supabase project:
 
-Once the Authority confirms the cleanup crew has handled the issue (or verifies the report is valid), they click "Resolve".
+   **profiles table:**
+   ```sql
+   create table profiles (
+     id uuid references auth.users on delete cascade primary key,
+     username text not null,
+     role text not null check (role in ('HELPER', 'AUTHORITY')),
+     points integer default 0,
+     level integer default 1,
+     created_at timestamp with time zone default now()
+   );
+   ```
 
-Phase 4: The Reward Loop (Gamification Logic)
-When "Resolve" is clicked, the backend performs two simultaneous actions:
+   **reports table:**
+   ```sql
+   create table reports (
+     id uuid default gen_random_uuid() primary key,
+     description text not null,
+     location text not null,
+     image_url text,
+     status text default 'PENDING' check (status in ('PENDING', 'RESOLVED')),
+     author_id uuid references profiles(id) on delete cascade,
+     author_name text not null,
+     created_at timestamp with time zone default now()
+   );
+   ```
 
-Updates the Report status to RESOLVED.
+   **Create storage bucket** for report images:
+   - Go to Supabase Storage
+   - Create a public bucket named `report-images`
 
-Finds the original Helper who made the report and increments their points (e.g., +20 XP).
+5. **Run the development server**
+   ```bash
+   npm run dev
+   ```
 
-Leveling Up: The system automatically checks if the new point total crosses a threshold (e.g., every 100 points). If so, the user's Level increases instantly.
+6. **Open your browser**
+   
+   Navigate to [http://localhost:3000](http://localhost:3000)
 
-Feedback: The next time the Helper refreshes their dashboard, they see their new Points and Level, reinforcing the positive behavior.
+---
 
-4. Technical Architecture (The "How")
-This project works using a modern, scalable Next.js architecture hosted in the cloud.
+## Project Structure
 
-Frontend Framework: Next.js 14+ (React)
+```
+EcoSnap/
+├── app/
+│   ├── authority/         # Authority dashboard
+│   ├── helper/            # Helper dashboard
+│   ├── services/          # API service layer
+│   ├── utils/             # Utilities and constants
+│   ├── globals.css        # Global styles
+│   ├── layout.js          # Root layout
+│   └── page.js            # Landing page
+├── components/            # Reusable React components
+├── hooks/                 # Custom React hooks
+├── public/                # Static assets
+└── .env.local            # Environment variables (not in git)
+```
 
-Used for its speed, server-side rendering capabilities, and file-based routing (app/helper vs app/authority).
+---
 
-Styling & UI: Tailwind CSS + Glassmorphism
+## Key Features Implementation
 
-We implemented a custom "Nature" design system using transparent glass cards (backdrop-filter: blur), gradients, and high-quality nature backgrounds to evoke an emotional connection to the environment.
+### Authentication Flow
+- Email/password signup with Supabase Auth
+- Role-based access control (Helper vs Authority)
+- Protected routes with authentication checks
 
-Backend & Database: Supabase (PostgreSQL)
+### Gamification System
+- Points awarded for:
+  - Submitting reports: +10 points (pending)
+  - Report resolved: +20 points
+- Level calculation: `floor(points / 100) + 1`
 
-Acts as our "Backend-as-a-Service." It handles:
+### Image Upload
+- Direct upload to Supabase Storage
+- Preview before submission
+- Public URLs for easy access
 
-Auth: Secure email/password login.
+### Service Layer Architecture
+All database operations are abstracted into services:
+- `reportService` - Report CRUD operations
+- `profileService` - User profile management
 
-Database: Stores relational data linking Users to Reports.
+---
 
-Real-time: (Future scope) capable of pushing live updates to the dashboard.
+## Scripts
 
-Mapping: Leaflet.js
+```bash
+npm run dev      # Start development server
+npm run build    # Build for production
+npm run start    # Start production server
+npm run lint     # Run ESLint
+```
 
-An open-source JavaScript library used to render interactive maps, allowing users to visualize report locations geographically.
+---
 
-5. Future Scope & Impact
-While the current MVP demonstrates the core "Report-Reward" loop, the roadmap includes:
+## Environment Variables
 
-AI Verification: Using Computer Vision (like Google Gemini Vision API) to automatically detect if a photo actually contains trash before accepting the report.
+| Variable | Description |
+|----------|-------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anonymous key |
 
-Leaderboards: A global ranking system to foster competition between neighborhoods or cities.
+> ⚠️ **Security Note**: Never commit `.env.local` to version control. API keys should only exist in `.env.local` locally and in your hosting provider's environment variables in production.
 
-Redeemable Rewards: converting XP into real-world value (e.g., coupons for eco-friendly products).
+---
 
-EcoSnap proves that technology can turn a boring chore (cleaning up) into an engaging community mission.
+## Deployment
+
+### Vercel (Recommended)
+
+1. Push your code to GitHub
+2. Import project in Vercel
+3. Add environment variables in Vercel dashboard
+4. Deploy!
+
+### Other Platforms
+
+Compatible with any Next.js hosting provider:
+- Netlify
+- Railway
+- AWS Amplify
+- Self-hosted with Docker
+
+---
+
+**Built with 💚 for a cleaner planet**
