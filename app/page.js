@@ -134,16 +134,25 @@ const AuthModal = ({ isOpen, onClose, initialRole }) => {
         if (error) {
           toast.error(MESSAGES.LOGIN_ERROR + ': ' + error.message);
         } else {
-          // Redirect based on role in profile
+          // Get user's profile and check role
           const { data: profile } = await supabase
             .from('profiles')
             .select('role')
             .eq('id', data.user.id)
             .single();
 
-          toast.success(MESSAGES.WELCOME_BACK);
-          if (profile?.role === ROLES.AUTHORITY) router.push('/authority');
-          else router.push('/helper');
+          // Validate role matches what user selected
+          if (profile?.role !== selectedRole) {
+            // Role mismatch - sign out and show error
+            await supabase.auth.signOut();
+            toast.error(`This account is registered as a ${profile?.role === 'HELPER' ? 'Helper' : 'Authority'}. Please select the correct role.`);
+            setSelectedRole(null); // Go back to role selection
+          } else {
+            // Role matches - proceed with login
+            toast.success(MESSAGES.WELCOME_BACK);
+            if (profile?.role === ROLES.AUTHORITY) router.push('/authority');
+            else router.push('/helper');
+          }
         }
       } else {
         // SIGN UP LOGIC
@@ -257,8 +266,8 @@ const AuthModal = ({ isOpen, onClose, initialRole }) => {
         </button>
 
         <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium mb-4 ${selectedRole === 'HELPER'
-            ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-            : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+          ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+          : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
           }`}>
           <span>{selectedRole === 'HELPER' ? '📸' : '🛡️'}</span>
           <span>{selectedRole === 'HELPER' ? 'Helper' : 'Authority'}</span>
@@ -282,8 +291,8 @@ const AuthModal = ({ isOpen, onClose, initialRole }) => {
             onChange={e => setForm({ ...form, password: e.target.value })} required />
 
           <button disabled={loading} className={`w-full py-3 rounded-xl font-bold transition-all shadow-lg ${selectedRole === 'HELPER'
-              ? 'bg-primary hover:bg-[#1eb08d] text-white shadow-primary/30'
-              : 'bg-blue-500 hover:bg-blue-600 text-white shadow-blue-500/30'
+            ? 'bg-primary hover:bg-[#1eb08d] text-white shadow-primary/30'
+            : 'bg-blue-500 hover:bg-blue-600 text-white shadow-blue-500/30'
             }`}>
             {loading ? 'Processing...' : (isLogin ? 'Access Dashboard' : 'Join EcoSnap')}
           </button>

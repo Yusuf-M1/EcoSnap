@@ -6,6 +6,7 @@ import { supabase } from '../utils/supabaseClient';
 import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import ThemeToggle from '../../components/ThemeToggle';
+import ProfileModal from '../../components/ProfileModal';
 
 // Dynamic Map Import (Prevents SSR Crash)
 const ReportMap = dynamic(() => import('../../components/ReportMap'), {
@@ -33,6 +34,8 @@ export default function HelperDashboard() {
   const [coordinates, setCoordinates] = useState({ lat: 51.505, lng: -0.09 });
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
+  const [showProfile, setShowProfile] = useState(false);
+  const [userStats, setUserStats] = useState({ reportsSubmitted: 0 });
 
   // Fetch User on Mount
   useEffect(() => {
@@ -67,6 +70,19 @@ export default function HelperDashboard() {
     };
     getUser();
   }, [router]);
+
+  // Fetch user stats
+  useEffect(() => {
+    const fetchStats = async () => {
+      if (!user) return;
+      const { count } = await supabase
+        .from('reports')
+        .select('*', { count: 'exact', head: true })
+        .eq('author_id', user.id);
+      setUserStats({ reportsSubmitted: count || 0 });
+    };
+    fetchStats();
+  }, [user]);
 
   // Handle Image Selection
   const handleFileChange = (e) => {
@@ -228,14 +244,19 @@ export default function HelperDashboard() {
                 <span className="text-gray-600 dark:text-gray-400 text-sm">{user.points || 0} XP</span>
               </div>
             </motion.div>
-            <div className="flex items-center space-x-3 bg-white dark:bg-zinc-800 rounded-full py-1.5 px-2 pl-4 border border-gray-100 dark:border-zinc-700 shadow-sm">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setShowProfile(true)}
+              className="flex items-center space-x-3 bg-white dark:bg-zinc-800 rounded-full py-1.5 px-2 pl-4 border border-gray-100 dark:border-zinc-700 shadow-sm cursor-pointer hover:shadow-md transition-all"
+            >
               <span className="text-sm font-medium">
                 Hello, <span className="text-emerald-600 dark:text-emerald-400">{user.username}</span>
               </span>
               <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-700 dark:text-emerald-400">
                 <span className="material-symbols-outlined text-sm">person</span>
               </div>
-            </div>
+            </motion.button>
             <ThemeToggle />
             <motion.button
               whileHover={{ scale: 1.05 }}
@@ -455,6 +476,15 @@ export default function HelperDashboard() {
           <span className="text-sm font-medium">Logout</span>
         </motion.button>
       </div>
+
+      {/* Profile Modal */}
+      <ProfileModal
+        isOpen={showProfile}
+        onClose={() => setShowProfile(false)}
+        user={user}
+        userRole="HELPER"
+        stats={userStats}
+      />
     </motion.div>
   );
 }

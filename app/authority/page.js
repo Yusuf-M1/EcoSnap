@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { supabase } from '../utils/supabaseClient';
 import { useRouter } from 'next/navigation';
 import ThemeToggle from '../../components/ThemeToggle';
+import ProfileModal from '../../components/ProfileModal';
 import dynamic from 'next/dynamic';
 import { POINTS } from '../utils/constants';
 
@@ -26,6 +27,8 @@ export default function AuthorityDashboard() {
   const [selectedReport, setSelectedReport] = useState(null);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [filter, setFilter] = useState('PENDING');
+  const [showProfile, setShowProfile] = useState(false);
+  const [authorityStats, setAuthorityStats] = useState({ reportsResolved: 0, totalReports: 0, uniqueHelpers: 0 });
 
   // Fetch user and reports on mount
   useEffect(() => {
@@ -145,6 +148,18 @@ export default function AuthorityDashboard() {
     rejected: reports.filter(r => r.status === 'REJECTED').length,
   };
 
+  // Calculate authority stats for profile
+  useEffect(() => {
+    if (reports.length > 0) {
+      const uniqueAuthors = new Set(reports.map(r => r.author_id));
+      setAuthorityStats({
+        reportsResolved: stats.resolved,
+        totalReports: stats.total,
+        uniqueHelpers: uniqueAuthors.size,
+      });
+    }
+  }, [reports, stats.resolved, stats.total]);
+
   // Filtered reports
   const filteredReports = filter === 'ALL'
     ? reports
@@ -192,14 +207,19 @@ export default function AuthorityDashboard() {
 
           <div className="flex items-center space-x-3">
             <ThemeToggle />
-            <div className="hidden md:flex items-center space-x-3 bg-slate-50 dark:bg-zinc-800 rounded-full py-2 px-4 border border-slate-100 dark:border-zinc-700">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setShowProfile(true)}
+              className="hidden md:flex items-center space-x-3 bg-slate-50 dark:bg-zinc-800 rounded-full py-2 px-4 border border-slate-100 dark:border-zinc-700 cursor-pointer hover:shadow-md transition-all"
+            >
               <span className="text-sm font-medium text-gray-600 dark:text-gray-300">{user.username}</span>
               <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
                 <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                 </svg>
               </div>
-            </div>
+            </motion.button>
             <motion.button
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
@@ -230,20 +250,20 @@ export default function AuthorityDashboard() {
                 <div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{stat.label}</p>
                   <p className={`text-2xl font-bold ${stat.color === 'blue' ? 'text-blue-600 dark:text-blue-400' :
-                      stat.color === 'amber' ? 'text-amber-600 dark:text-amber-400' :
-                        stat.color === 'emerald' ? 'text-emerald-600 dark:text-emerald-400' :
-                          'text-red-600 dark:text-red-400'
+                    stat.color === 'amber' ? 'text-amber-600 dark:text-amber-400' :
+                      stat.color === 'emerald' ? 'text-emerald-600 dark:text-emerald-400' :
+                        'text-red-600 dark:text-red-400'
                     }`}>{stat.value}</p>
                 </div>
                 <div className={`p-2 rounded-xl ${stat.color === 'blue' ? 'bg-blue-50 dark:bg-blue-900/20' :
-                    stat.color === 'amber' ? 'bg-amber-50 dark:bg-amber-900/20' :
-                      stat.color === 'emerald' ? 'bg-emerald-50 dark:bg-emerald-900/20' :
-                        'bg-red-50 dark:bg-red-900/20'
+                  stat.color === 'amber' ? 'bg-amber-50 dark:bg-amber-900/20' :
+                    stat.color === 'emerald' ? 'bg-emerald-50 dark:bg-emerald-900/20' :
+                      'bg-red-50 dark:bg-red-900/20'
                   }`}>
                   <svg className={`w-5 h-5 ${stat.color === 'blue' ? 'text-blue-500' :
-                      stat.color === 'amber' ? 'text-amber-500' :
-                        stat.color === 'emerald' ? 'text-emerald-500' :
-                          'text-red-500'
+                    stat.color === 'amber' ? 'text-amber-500' :
+                      stat.color === 'emerald' ? 'text-emerald-500' :
+                        'text-red-500'
                     }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={stat.icon} />
                   </svg>
@@ -260,8 +280,8 @@ export default function AuthorityDashboard() {
               key={status}
               onClick={() => setFilter(status)}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${filter === status
-                  ? 'bg-blue-500 text-white shadow-sm'
-                  : 'text-gray-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'
+                ? 'bg-blue-500 text-white shadow-sm'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'
                 }`}
             >
               {status === 'ALL' ? 'All Reports' : status.charAt(0) + status.slice(1).toLowerCase()}
@@ -315,8 +335,8 @@ export default function AuthorityDashboard() {
                   <div className="p-5">
                     <div className="flex items-center justify-between mb-3">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${report.status === 'RESOLVED' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' :
-                          report.status === 'REJECTED' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
-                            'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                        report.status === 'REJECTED' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
+                          'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
                         }`}>
                         {report.status}
                       </span>
@@ -473,8 +493,8 @@ export default function AuthorityDashboard() {
                   <div className="mt-6">
                     <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3">Response Sent</h3>
                     <div className={`rounded-2xl p-4 ${selectedReport.status === 'RESOLVED'
-                        ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800'
-                        : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+                      ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800'
+                      : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
                       }`}>
                       <p className={selectedReport.status === 'RESOLVED' ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}>
                         {selectedReport.authority_response}
@@ -526,6 +546,15 @@ export default function AuthorityDashboard() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Profile Modal */}
+      <ProfileModal
+        isOpen={showProfile}
+        onClose={() => setShowProfile(false)}
+        user={user}
+        userRole="AUTHORITY"
+        stats={authorityStats}
+      />
     </motion.div>
   );
 }
