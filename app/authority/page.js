@@ -83,7 +83,7 @@ export default function AuthorityDashboard() {
     try {
       const responseMessage = responseType === 'ACCEPTED'
         ? 'Report accepted! Team has been dispatched for cleaning. Thank you for your contribution! 🎉'
-        : 'This report has been marked as a false report. Please ensure accurate reporting.';
+        : 'This report has been marked as a false report. The initial 10 XP has been revoked.';
 
       const newStatus = responseType === 'ACCEPTED' ? 'RESOLVED' : 'REJECTED';
 
@@ -99,26 +99,30 @@ export default function AuthorityDashboard() {
 
       if (updateError) throw updateError;
 
-      // Award points if accepted
-      if (responseType === 'ACCEPTED') {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('points, level')
-          .eq('id', authorId)
-          .single();
+      // Get helper's current profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('points')
+        .eq('id', authorId)
+        .single();
 
-        if (profile) {
-          const newPoints = (profile.points || 0) + POINTS.REPORT_RESOLVED;
-          const newLevel = Math.floor(newPoints / 100) + 1;
+      if (profile) {
+        let newPoints = profile.points || 0;
 
-          await supabase
-            .from('profiles')
-            .update({ points: newPoints, level: newLevel })
-            .eq('id', authorId);
+        if (responseType === 'ACCEPTED') {
+          // Award +20 XP bonus for accepted report
+          newPoints += POINTS.REPORT_RESOLVED;
+          toast.success('Report accepted! Helper awarded +20 XP bonus');
+        } else {
+          // Deduct the 10 XP that was awarded on submission (min 0)
+          newPoints = Math.max(0, newPoints + POINTS.REPORT_REJECTED);
+          toast.info('Report marked as false. Helper lost 10 XP');
         }
-        toast.success('Report accepted! Helper awarded +20 XP');
-      } else {
-        toast.info('Report marked as false report');
+
+        await supabase
+          .from('profiles')
+          .update({ points: newPoints })
+          .eq('id', authorId);
       }
 
       await fetchReports();

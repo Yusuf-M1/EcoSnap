@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { supabase } from '../app/utils/supabaseClient';
+import { getLevelFromXP, getLevelProgress, getXPToNextLevel } from '../app/utils/constants';
 
 export default function ProfileModal({ isOpen, onClose, user, userRole, stats }) {
     const [bio, setBio] = useState(user?.bio || '');
@@ -38,6 +39,11 @@ export default function ProfileModal({ isOpen, onClose, user, userRole, stats })
 
     const isHelper = userRole === 'HELPER';
 
+    // Get level info using the new system
+    const levelInfo = getLevelFromXP(user?.points);
+    const levelProgress = getLevelProgress(user?.points);
+    const xpToNext = getXPToNextLevel(user?.points);
+
     return (
         <AnimatePresence>
             <motion.div
@@ -63,9 +69,15 @@ export default function ProfileModal({ isOpen, onClose, user, userRole, stats })
                                 </div>
                                 <div>
                                     <h2 className="text-xl font-bold text-white">{user?.username}</h2>
-                                    <span className="px-3 py-1 bg-white/20 rounded-full text-white text-xs font-medium">
-                                        {isHelper ? '🌿 Helper' : '🛡️ Authority'}
-                                    </span>
+                                    {isHelper ? (
+                                        <span className="px-3 py-1 bg-white/20 rounded-full text-white text-xs font-medium">
+                                            ✨ {levelInfo.title}
+                                        </span>
+                                    ) : (
+                                        <span className="px-3 py-1 bg-white/20 rounded-full text-white text-xs font-medium">
+                                            🛡️ Authority
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                             <button
@@ -85,12 +97,12 @@ export default function ProfileModal({ isOpen, onClose, user, userRole, stats })
                             {isHelper ? (
                                 <>
                                     <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-2xl p-4 text-center">
-                                        <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{user?.level || 1}</p>
+                                        <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{levelInfo.level}</p>
                                         <p className="text-xs text-gray-500 dark:text-gray-400">Level</p>
                                     </div>
                                     <div className="bg-teal-50 dark:bg-teal-900/20 rounded-2xl p-4 text-center">
                                         <p className="text-2xl font-bold text-teal-600 dark:text-teal-400">{user?.points || 0}</p>
-                                        <p className="text-xs text-gray-500 dark:text-gray-400">XP Points</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400">Total XP</p>
                                     </div>
                                     <div className="col-span-2 bg-gray-50 dark:bg-zinc-800 rounded-2xl p-4 text-center">
                                         <p className="text-2xl font-bold text-gray-700 dark:text-gray-300">{stats?.reportsSubmitted || 0}</p>
@@ -115,8 +127,40 @@ export default function ProfileModal({ isOpen, onClose, user, userRole, stats })
                             )}
                         </div>
 
+                        {/* XP Progress for Helpers */}
+                        {isHelper && (
+                            <div className="mt-4 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/10 dark:to-teal-900/10 rounded-2xl p-4 border border-emerald-100 dark:border-emerald-800/30">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div>
+                                        <span className="text-xs text-gray-500 dark:text-gray-400">Current Title</span>
+                                        <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">✨ {levelInfo.title}</p>
+                                    </div>
+                                    {levelInfo.level < 10 && (
+                                        <div className="text-right">
+                                            <span className="text-xs text-gray-500 dark:text-gray-400">Next Level</span>
+                                            <p className="text-sm font-medium text-teal-600 dark:text-teal-400">{xpToNext} XP needed</p>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="h-3 bg-gray-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+                                    <motion.div
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${levelProgress}%` }}
+                                        transition={{ duration: 0.8, ease: "easeOut" }}
+                                        className="h-full bg-gradient-to-r from-emerald-500 to-teal-500"
+                                    />
+                                </div>
+                                <div className="flex justify-between mt-2">
+                                    <span className="text-xs text-gray-500 dark:text-gray-400">Level {levelInfo.level}</span>
+                                    {levelInfo.level < 10 && (
+                                        <span className="text-xs text-gray-500 dark:text-gray-400">Level {levelInfo.level + 1}</span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Bio Section */}
-                        <div className="mt-6">
+                        <div className="mt-4">
                             <div className="flex items-center justify-between mb-2">
                                 <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">About Me</h3>
                                 {!isEditing && (
@@ -172,22 +216,6 @@ export default function ProfileModal({ isOpen, onClose, user, userRole, stats })
                                 </div>
                             )}
                         </div>
-
-                        {/* XP Progress for Helpers */}
-                        {isHelper && (
-                            <div className="mt-4">
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs text-gray-500 dark:text-gray-400">Progress to Level {(user?.level || 1) + 1}</span>
-                                    <span className="text-xs text-gray-500 dark:text-gray-400">{(user?.points || 0) % 100}/100 XP</span>
-                                </div>
-                                <div className="h-2 bg-gray-200 dark:bg-zinc-700 rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all duration-500"
-                                        style={{ width: `${(user?.points || 0) % 100}%` }}
-                                    />
-                                </div>
-                            </div>
-                        )}
                     </div>
                 </motion.div>
             </motion.div>

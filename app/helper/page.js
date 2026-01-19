@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import ThemeToggle from '../../components/ThemeToggle';
 import ProfileModal from '../../components/ProfileModal';
+import { getLevelFromXP } from '../utils/constants';
 
 // Dynamic Map Import (Prevents SSR Crash)
 const ReportMap = dynamic(() => import('../../components/ReportMap'), {
@@ -159,6 +160,18 @@ export default function HelperDashboard() {
 
       if (dbError) throw dbError;
 
+      // Award +10 XP for submitting report
+      const newPoints = (user.points || 0) + 10;
+      const { error: xpError } = await supabase
+        .from('profiles')
+        .update({ points: newPoints })
+        .eq('id', user.id);
+
+      if (!xpError) {
+        // Update local user state
+        setUser(prev => ({ ...prev, points: newPoints }));
+      }
+
       // Success
       toast.success('Report submitted successfully! +10 XP 🎉', { id: toastId });
 
@@ -237,9 +250,9 @@ export default function HelperDashboard() {
               animate={{ scale: 1 }}
               className="hidden md:flex flex-col items-end"
             >
-              <span className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider">Current Level</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider">Current Title</span>
               <div className="flex items-center space-x-2">
-                <span className="text-emerald-600 dark:text-emerald-400 font-bold">Level {user.level || 1}</span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">✨ {getLevelFromXP(user.points).title}</span>
                 <span className="text-gray-300 dark:text-gray-600">|</span>
                 <span className="text-gray-600 dark:text-gray-400 text-sm">{user.points || 0} XP</span>
               </div>
@@ -452,7 +465,7 @@ export default function HelperDashboard() {
                 initial={{ y: -10, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.4 }}
-                className="absolute top-6 left-6 z-[1000] bg-white/90 dark:bg-zinc-800/90 backdrop-blur px-4 py-2 rounded-full shadow-sm flex items-center space-x-2 pointer-events-none"
+                className="absolute top-6 left-6 z-10 bg-white/90 dark:bg-zinc-800/90 backdrop-blur-md px-4 py-2 rounded-full shadow-sm flex items-center space-x-2 pointer-events-none"
               >
                 <span className="material-symbols-outlined text-emerald-500">map</span>
                 <span className="font-bold text-sm">Pinpoint Location</span>
