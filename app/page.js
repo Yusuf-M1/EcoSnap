@@ -90,10 +90,14 @@ const AuthModal = ({ isOpen, onClose, initialRole }) => {
   const router = useRouter();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [selectedRole, setSelectedRole] = useState(initialRole || null);
   const [form, setForm] = useState({ email: '', password: '', username: '', role: initialRole });
 
   // Update role if prop changes
-  useEffect(() => { setForm(f => ({ ...f, role: initialRole })); }, [initialRole]);
+  useEffect(() => {
+    setSelectedRole(initialRole);
+    setForm(f => ({ ...f, role: initialRole }));
+  }, [initialRole]);
 
   // Listen for email verification
   useEffect(() => {
@@ -182,6 +186,56 @@ const AuthModal = ({ isOpen, onClose, initialRole }) => {
 
   if (!isOpen) return null;
 
+  // Role Selection Screen
+  if (!selectedRole) {
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9 }}
+          className="relative w-full max-w-lg bg-white dark:bg-[#152622] rounded-3xl p-8 shadow-2xl border border-white/10"
+        >
+          <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-white">✕</button>
+
+          <h2 className="text-2xl font-bold mb-2 text-[#0f1a17] dark:text-white text-center">Welcome to EcoSnap</h2>
+          <p className="text-sm text-gray-500 mb-8 text-center">How would you like to continue?</p>
+
+          <div className="grid grid-cols-2 gap-4">
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => {
+                setSelectedRole('HELPER');
+                setForm(f => ({ ...f, role: 'HELPER' }));
+              }}
+              className="p-6 rounded-2xl border-2 border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 hover:border-emerald-400 dark:hover:border-emerald-600 transition-all text-center group"
+            >
+              <div className="text-4xl mb-3">📸</div>
+              <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-1">Helper</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Report issues & earn XP</p>
+            </motion.button>
+
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => {
+                setSelectedRole('AUTHORITY');
+                setForm(f => ({ ...f, role: 'AUTHORITY' }));
+              }}
+              className="p-6 rounded-2xl border-2 border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 hover:border-blue-400 dark:hover:border-blue-600 transition-all text-center group"
+            >
+              <div className="text-4xl mb-3">🛡️</div>
+              <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-1">Authority</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Manage & respond to reports</p>
+            </motion.button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* Backdrop */}
@@ -194,10 +248,24 @@ const AuthModal = ({ isOpen, onClose, initialRole }) => {
         exit={{ opacity: 0, scale: 0.9 }}
         className="relative w-full max-w-md bg-white dark:bg-[#152622] rounded-3xl p-8 shadow-2xl border border-white/10"
       >
-        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white">✕</button>
+        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-white">✕</button>
+        <button
+          onClick={() => setSelectedRole(null)}
+          className="absolute top-4 left-4 text-gray-400 hover:text-gray-600 dark:hover:text-white flex items-center gap-1 text-sm"
+        >
+          ← Back
+        </button>
+
+        <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium mb-4 ${selectedRole === 'HELPER'
+            ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
+            : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+          }`}>
+          <span>{selectedRole === 'HELPER' ? '📸' : '🛡️'}</span>
+          <span>{selectedRole === 'HELPER' ? 'Helper' : 'Authority'}</span>
+        </div>
 
         <h2 className="text-2xl font-bold mb-2 text-[#0f1a17] dark:text-white">
-          {isLogin ? `Login as ${form.role === 'HELPER' ? 'Helper' : 'Authority'}` : "Create Account"}
+          {isLogin ? 'Welcome Back' : 'Create Account'}
         </h2>
         <p className="text-sm text-gray-500 mb-6">Enter your details to continue.</p>
 
@@ -213,14 +281,18 @@ const AuthModal = ({ isOpen, onClose, initialRole }) => {
           <input type="password" placeholder="Password" className="w-full p-3 rounded-xl bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-black dark:text-white"
             onChange={e => setForm({ ...form, password: e.target.value })} required />
 
-          <button disabled={loading} className="w-full py-3 rounded-xl bg-primary hover:bg-[#1eb08d] text-white font-bold transition-all shadow-lg shadow-primary/30">
+          <button disabled={loading} className={`w-full py-3 rounded-xl font-bold transition-all shadow-lg ${selectedRole === 'HELPER'
+              ? 'bg-primary hover:bg-[#1eb08d] text-white shadow-primary/30'
+              : 'bg-blue-500 hover:bg-blue-600 text-white shadow-blue-500/30'
+            }`}>
             {loading ? 'Processing...' : (isLogin ? 'Access Dashboard' : 'Join EcoSnap')}
           </button>
         </form>
 
         <div className="mt-6 text-center text-sm text-gray-500">
           {isLogin ? "New here? " : "Already have an account? "}
-          <button onClick={() => setIsLogin(!isLogin)} className="text-primary font-bold hover:underline">
+          <button onClick={() => setIsLogin(!isLogin)} className={`font-bold hover:underline ${selectedRole === 'HELPER' ? 'text-primary' : 'text-blue-500'
+            }`}>
             {isLogin ? "Create Account" : "Login"}
           </button>
         </div>
@@ -234,7 +306,7 @@ export default function LandingPage() {
   const [showAuth, setShowAuth] = useState(false);
   const [selectedRole, setSelectedRole] = useState('HELPER');
 
-  const openAuth = (role) => {
+  const openAuth = (role = null) => {
     setSelectedRole(role);
     setShowAuth(true);
   };
@@ -260,7 +332,7 @@ export default function LandingPage() {
 
           <div className="flex items-center gap-3">
             <ThemeToggle />
-            <button onClick={() => openAuth('HELPER')} className="hidden sm:flex h-11 items-center justify-center rounded-xl bg-[#0f1a17] dark:bg-white px-6 text-sm font-bold text-white dark:text-[#0f1a17] hover:bg-opacity-90 transition-all">
+            <button onClick={() => openAuth(null)} className="hidden sm:flex h-11 items-center justify-center rounded-xl bg-[#0f1a17] dark:bg-white px-6 text-sm font-bold text-white dark:text-[#0f1a17] hover:bg-opacity-90 transition-all">
               Login
             </button>
           </div>

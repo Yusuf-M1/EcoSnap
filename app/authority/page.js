@@ -5,15 +5,27 @@ import { toast } from 'sonner';
 import { supabase } from '../utils/supabaseClient';
 import { useRouter } from 'next/navigation';
 import ThemeToggle from '../../components/ThemeToggle';
-import { POINTS, STATUS } from '../utils/constants';
+import dynamic from 'next/dynamic';
+import { POINTS } from '../utils/constants';
+
+// Dynamic Map Import
+const ReportMap = dynamic(() => import('../../components/ReportMap'), {
+  ssr: false,
+  loading: () => (
+    <div className="h-full w-full bg-blue-50 dark:bg-zinc-800 animate-pulse flex items-center justify-center rounded-2xl">
+      <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+    </div>
+  )
+});
 
 export default function AuthorityDashboard() {
   const router = useRouter();
   const [user, setUser] = useState(null);
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [resolvingId, setResolvingId] = useState(null);
-  const [filter, setFilter] = useState('ALL');
+  const [selectedReport, setSelectedReport] = useState(null);
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [filter, setFilter] = useState('PENDING');
 
   // Fetch user and reports on mount
   useEffect(() => {
@@ -32,6 +44,7 @@ export default function AuthorityDashboard() {
           .single();
 
         if (profile?.role !== 'AUTHORITY') {
+          toast.error('Access denied. Authority role required.');
           router.push('/helper');
           return;
         }
@@ -61,40 +74,56 @@ export default function AuthorityDashboard() {
     }
   };
 
-  const resolveReport = async (reportId, authorId) => {
-    setResolvingId(reportId);
+  // Send response to helper
+  const sendResponse = async (reportId, authorId, responseType) => {
+    setSendingMessage(true);
     try {
-      // Update report status
+      const responseMessage = responseType === 'ACCEPTED'
+        ? 'Report accepted! Team has been dispatched for cleaning. Thank you for your contribution! 🎉'
+        : 'This report has been marked as a false report. Please ensure accurate reporting.';
+
+      const newStatus = responseType === 'ACCEPTED' ? 'RESOLVED' : 'REJECTED';
+
+      // Update report status and add response message
       const { error: updateError } = await supabase
         .from('reports')
-        .update({ status: 'RESOLVED' })
+        .update({
+          status: newStatus,
+          authority_response: responseMessage,
+          responded_at: new Date().toISOString()
+        })
         .eq('id', reportId);
 
       if (updateError) throw updateError;
 
-      // Award points to helper
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('points, level')
-        .eq('id', authorId)
-        .single();
-
-      if (profile) {
-        const newPoints = (profile.points || 0) + POINTS.REPORT_RESOLVED;
-        const newLevel = Math.floor(newPoints / 100) + 1;
-
-        await supabase
+      // Award points if accepted
+      if (responseType === 'ACCEPTED') {
+        const { data: profile } = await supabase
           .from('profiles')
-          .update({ points: newPoints, level: newLevel })
-          .eq('id', authorId);
+          .select('points, level')
+          .eq('id', authorId)
+          .single();
+
+        if (profile) {
+          const newPoints = (profile.points || 0) + POINTS.REPORT_RESOLVED;
+          const newLevel = Math.floor(newPoints / 100) + 1;
+
+          await supabase
+            .from('profiles')
+            .update({ points: newPoints, level: newLevel })
+            .eq('id', authorId);
+        }
+        toast.success('Report accepted! Helper awarded +20 XP');
+      } else {
+        toast.info('Report marked as false report');
       }
 
-      toast.success('Report resolved! Helper awarded +20 XP');
       await fetchReports();
+      setSelectedReport(null);
     } catch (error) {
-      toast.error('Failed to resolve report: ' + error.message);
+      toast.error('Failed to send response: ' + error.message);
     } finally {
-      setResolvingId(null);
+      setSendingMessage(false);
     }
   };
 
@@ -113,6 +142,7 @@ export default function AuthorityDashboard() {
     total: reports.length,
     pending: reports.filter(r => r.status === 'PENDING').length,
     resolved: reports.filter(r => r.status === 'RESOLVED').length,
+    rejected: reports.filter(r => r.status === 'REJECTED').length,
   };
 
   // Filtered reports
@@ -123,7 +153,7 @@ export default function AuthorityDashboard() {
   // Loading state
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950 flex items-center justify-center">
         <div className="flex flex-col items-center space-y-4">
           <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
           <p className="text-blue-600 dark:text-blue-400 font-medium">Loading Dashboard...</p>
@@ -138,7 +168,7 @@ export default function AuthorityDashboard() {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="min-h-screen bg-slate-50 dark:bg-zinc-950 text-gray-800 dark:text-gray-100 p-4 md:p-6 lg:p-8 transition-colors"
+      className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-zinc-950 dark:via-zinc-900 dark:to-zinc-950 text-gray-800 dark:text-gray-100 p-4 md:p-6 lg:p-8 transition-colors"
     >
       <div className="max-w-7xl mx-auto space-y-6">
 
@@ -146,7 +176,7 @@ export default function AuthorityDashboard() {
         <motion.header
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          className="bg-white dark:bg-zinc-900 rounded-2xl px-6 py-4 flex flex-col md:flex-row justify-between items-center shadow-sm border border-slate-100 dark:border-zinc-800"
+          className="bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md rounded-2xl px-6 py-4 flex flex-col md:flex-row justify-between items-center shadow-sm border border-slate-100 dark:border-zinc-800"
         >
           <div className="flex items-center space-x-3 mb-3 md:mb-0">
             <div className="bg-gradient-to-tr from-blue-500 to-indigo-500 rounded-xl p-2.5 text-white shadow-lg shadow-blue-500/20">
@@ -182,34 +212,38 @@ export default function AuthorityDashboard() {
         </motion.header>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Total Reports', value: stats.total, color: 'blue', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+            { label: 'Total', value: stats.total, color: 'blue', icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
             { label: 'Pending', value: stats.pending, color: 'amber', icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z' },
             { label: 'Resolved', value: stats.resolved, color: 'emerald', icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z' },
+            { label: 'Rejected', value: stats.rejected, color: 'red', icon: 'M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z' },
           ].map((stat, i) => (
             <motion.div
               key={stat.label}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.1 }}
-              className={`bg-white dark:bg-zinc-900 rounded-2xl p-6 border border-slate-100 dark:border-zinc-800 shadow-sm`}
+              className="bg-white dark:bg-zinc-900 rounded-2xl p-5 border border-slate-100 dark:border-zinc-800 shadow-sm"
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">{stat.label}</p>
-                  <p className={`text-3xl font-bold ${stat.color === 'blue' ? 'text-blue-600 dark:text-blue-400' :
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{stat.label}</p>
+                  <p className={`text-2xl font-bold ${stat.color === 'blue' ? 'text-blue-600 dark:text-blue-400' :
                       stat.color === 'amber' ? 'text-amber-600 dark:text-amber-400' :
-                        'text-emerald-600 dark:text-emerald-400'
+                        stat.color === 'emerald' ? 'text-emerald-600 dark:text-emerald-400' :
+                          'text-red-600 dark:text-red-400'
                     }`}>{stat.value}</p>
                 </div>
-                <div className={`p-3 rounded-xl ${stat.color === 'blue' ? 'bg-blue-50 dark:bg-blue-900/20' :
+                <div className={`p-2 rounded-xl ${stat.color === 'blue' ? 'bg-blue-50 dark:bg-blue-900/20' :
                     stat.color === 'amber' ? 'bg-amber-50 dark:bg-amber-900/20' :
-                      'bg-emerald-50 dark:bg-emerald-900/20'
+                      stat.color === 'emerald' ? 'bg-emerald-50 dark:bg-emerald-900/20' :
+                        'bg-red-50 dark:bg-red-900/20'
                   }`}>
-                  <svg className={`w-6 h-6 ${stat.color === 'blue' ? 'text-blue-500' :
+                  <svg className={`w-5 h-5 ${stat.color === 'blue' ? 'text-blue-500' :
                       stat.color === 'amber' ? 'text-amber-500' :
-                        'text-emerald-500'
+                        stat.color === 'emerald' ? 'text-emerald-500' :
+                          'text-red-500'
                     }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={stat.icon} />
                   </svg>
@@ -220,8 +254,8 @@ export default function AuthorityDashboard() {
         </div>
 
         {/* Filter Tabs */}
-        <div className="flex space-x-2 bg-white dark:bg-zinc-900 p-1.5 rounded-xl w-fit border border-slate-100 dark:border-zinc-800">
-          {['ALL', 'PENDING', 'RESOLVED'].map((status) => (
+        <div className="flex flex-wrap gap-2 bg-white dark:bg-zinc-900 p-1.5 rounded-xl w-fit border border-slate-100 dark:border-zinc-800">
+          {['ALL', 'PENDING', 'RESOLVED', 'REJECTED'].map((status) => (
             <button
               key={status}
               onClick={() => setFilter(status)}
@@ -230,19 +264,19 @@ export default function AuthorityDashboard() {
                   : 'text-gray-600 dark:text-gray-400 hover:bg-slate-50 dark:hover:bg-zinc-800'
                 }`}
             >
-              {status === 'ALL' ? 'All' : status.charAt(0) + status.slice(1).toLowerCase()}
+              {status === 'ALL' ? 'All Reports' : status.charAt(0) + status.slice(1).toLowerCase()}
             </button>
           ))}
         </div>
 
-        {/* Reports List */}
-        <div className="space-y-4">
+        {/* Reports Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <AnimatePresence mode="popLayout">
             {filteredReports.length === 0 ? (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="bg-white dark:bg-zinc-900 rounded-2xl p-12 text-center border border-slate-100 dark:border-zinc-800"
+                className="col-span-full bg-white dark:bg-zinc-900 rounded-2xl p-12 text-center border border-slate-100 dark:border-zinc-800"
               >
                 <div className="w-16 h-16 bg-slate-100 dark:bg-zinc-800 rounded-full flex items-center justify-center mx-auto mb-4">
                   <svg className="w-8 h-8 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -251,7 +285,7 @@ export default function AuthorityDashboard() {
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No reports found</h3>
                 <p className="text-gray-500 dark:text-gray-400">
-                  {filter === 'PENDING' ? 'All reports have been resolved!' : 'No reports have been submitted yet.'}
+                  {filter === 'PENDING' ? 'All pending reports have been handled!' : 'No reports in this category.'}
                 </p>
               </motion.div>
             ) : (
@@ -263,79 +297,57 @@ export default function AuthorityDashboard() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   transition={{ delay: index * 0.05 }}
-                  className="bg-white dark:bg-zinc-900 rounded-2xl overflow-hidden border border-slate-100 dark:border-zinc-800 shadow-sm hover:shadow-md transition-shadow"
+                  onClick={() => setSelectedReport(report)}
+                  className="bg-white dark:bg-zinc-900 rounded-2xl overflow-hidden border border-slate-100 dark:border-zinc-800 shadow-sm hover:shadow-lg transition-all cursor-pointer group"
                 >
-                  <div className="flex flex-col md:flex-row">
-                    {/* Image */}
-                    {report.image_url && (
-                      <div className="md:w-48 h-48 md:h-auto flex-shrink-0">
-                        <img
-                          src={report.image_url}
-                          alt="Report"
-                          className="w-full h-full object-cover"
-                        />
+                  {/* Image */}
+                  {report.image_url && (
+                    <div className="h-48 overflow-hidden">
+                      <img
+                        src={report.image_url}
+                        alt="Report"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    </div>
+                  )}
+
+                  {/* Content */}
+                  <div className="p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${report.status === 'RESOLVED' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' :
+                          report.status === 'REJECTED' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
+                            'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                        }`}>
+                        {report.status}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {new Date(report.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+
+                    <p className="text-gray-900 dark:text-white font-medium mb-3 line-clamp-2">{report.description}</p>
+
+                    <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+                      <span className="flex items-center gap-1">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <span className="truncate max-w-[150px]">{report.location}</span>
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        <span>{report.author_name}</span>
+                      </span>
+                    </div>
+
+                    {report.status === 'PENDING' && (
+                      <div className="mt-4 text-xs text-blue-500 dark:text-blue-400 font-medium">
+                        Click to view details & respond →
                       </div>
                     )}
-
-                    {/* Content */}
-                    <div className="flex-1 p-5">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-2">
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${report.status === 'RESOLVED'
-                                ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400'
-                                : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
-                              }`}>
-                              {report.status}
-                            </span>
-                            <span className="text-xs text-gray-400">
-                              {new Date(report.created_at).toLocaleDateString()}
-                            </span>
-                          </div>
-                          <p className="text-gray-900 dark:text-white font-medium mb-2">{report.description}</p>
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500 dark:text-gray-400 mb-4">
-                        <span className="flex items-center space-x-1">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                          </svg>
-                          <span>{report.location}</span>
-                        </span>
-                        <span className="flex items-center space-x-1">
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                          </svg>
-                          <span>{report.author_name}</span>
-                        </span>
-                      </div>
-
-                      {report.status === 'PENDING' && (
-                        <motion.button
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
-                          onClick={() => resolveReport(report.id, report.author_id)}
-                          disabled={resolvingId === report.id}
-                          className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-xl font-medium text-sm shadow-sm shadow-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
-                        >
-                          {resolvingId === report.id ? (
-                            <>
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                              <span>Resolving...</span>
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                              <span>Mark Resolved</span>
-                            </>
-                          )}
-                        </motion.button>
-                      )}
-                    </div>
                   </div>
                 </motion.div>
               ))
@@ -344,6 +356,176 @@ export default function AuthorityDashboard() {
         </div>
 
       </div>
+
+      {/* Report Detail Modal */}
+      <AnimatePresence>
+        {selectedReport && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            onClick={() => setSelectedReport(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white dark:bg-zinc-900 rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl"
+            >
+              {/* Modal Header */}
+              <div className="p-6 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">Report Details</h2>
+                  <p className="text-sm text-gray-500">Submitted by {selectedReport.author_name}</p>
+                </div>
+                <button
+                  onClick={() => setSelectedReport(null)}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Modal Content */}
+              <div className="p-6 overflow-y-auto max-h-[60vh]">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Photo */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      Photo Evidence
+                    </h3>
+                    {selectedReport.image_url ? (
+                      <img
+                        src={selectedReport.image_url}
+                        alt="Report"
+                        className="w-full h-64 object-cover rounded-2xl"
+                      />
+                    ) : (
+                      <div className="w-full h-64 bg-slate-100 dark:bg-zinc-800 rounded-2xl flex items-center justify-center text-gray-400">
+                        No image
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Map */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                      </svg>
+                      Location
+                    </h3>
+                    <div className="h-64 rounded-2xl overflow-hidden">
+                      {selectedReport.latitude && selectedReport.longitude ? (
+                        <ReportMap
+                          coordinates={{ lat: selectedReport.latitude, lng: selectedReport.longitude }}
+                          setCoordinates={() => { }}
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-gray-400">
+                          No location data
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Description */}
+                <div className="mt-6">
+                  <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 flex items-center gap-2">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+                    </svg>
+                    Description
+                  </h3>
+                  <div className="bg-slate-50 dark:bg-zinc-800 rounded-2xl p-4">
+                    <p className="text-gray-900 dark:text-white">{selectedReport.description}</p>
+                  </div>
+                </div>
+
+                {/* Location Details */}
+                <div className="mt-4 flex flex-wrap gap-4 text-sm">
+                  <div className="bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-xl">
+                    <span className="text-blue-600 dark:text-blue-400">📍 {selectedReport.location}</span>
+                  </div>
+                  <div className="bg-gray-100 dark:bg-zinc-800 px-4 py-2 rounded-xl">
+                    <span className="text-gray-600 dark:text-gray-400">📅 {new Date(selectedReport.created_at).toLocaleString()}</span>
+                  </div>
+                  {selectedReport.latitude && selectedReport.longitude && (
+                    <div className="bg-gray-100 dark:bg-zinc-800 px-4 py-2 rounded-xl">
+                      <span className="text-gray-600 dark:text-gray-400 font-mono text-xs">
+                        {selectedReport.latitude.toFixed(6)}, {selectedReport.longitude.toFixed(6)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Authority Response (if already responded) */}
+                {selectedReport.authority_response && (
+                  <div className="mt-6">
+                    <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3">Response Sent</h3>
+                    <div className={`rounded-2xl p-4 ${selectedReport.status === 'RESOLVED'
+                        ? 'bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800'
+                        : 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+                      }`}>
+                      <p className={selectedReport.status === 'RESOLVED' ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}>
+                        {selectedReport.authority_response}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Actions */}
+              {selectedReport.status === 'PENDING' && (
+                <div className="p-6 border-t border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-800/50">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-4">Send Response to Helper</h3>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => sendResponse(selectedReport.id, selectedReport.author_id, 'ACCEPTED')}
+                      disabled={sendingMessage}
+                      className="flex-1 py-3 px-6 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-white rounded-xl font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {sendingMessage ? (
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      ) : (
+                        <>
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Accept & Dispatch Team
+                        </>
+                      )}
+                    </motion.button>
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => sendResponse(selectedReport.id, selectedReport.author_id, 'REJECTED')}
+                      disabled={sendingMessage}
+                      className="flex-1 py-3 px-6 bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-400 hover:to-rose-400 text-white rounded-xl font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      Mark as False Report
+                    </motion.button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

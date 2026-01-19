@@ -14,6 +14,7 @@ export const ROLES = {
 export const STATUS = {
     PENDING: 'PENDING',
     RESOLVED: 'RESOLVED',
+    REJECTED: 'REJECTED',
 };
 
 export const MESSAGES = {
