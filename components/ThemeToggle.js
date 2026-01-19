@@ -1,9 +1,35 @@
 "use client";
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useTheme } from '../context/ThemeContext';
 
 export default function ThemeToggle({ className = '' }) {
-    const { theme, toggleTheme } = useTheme();
+    const [mounted, setMounted] = useState(false);
+
+    // Avoid hydration mismatch by only rendering after mount
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    // Get theme context - this will work after mount
+    let theme = 'light';
+    let toggleTheme = () => { };
+
+    try {
+        const themeContext = useTheme();
+        theme = themeContext.theme;
+        toggleTheme = themeContext.toggleTheme;
+    } catch (e) {
+        // During SSR/static generation, useTheme might fail
+        // We'll just use defaults
+    }
+
+    // Don't render anything until mounted to avoid hydration mismatch
+    if (!mounted) {
+        return (
+            <div className={`p-2.5 rounded-full bg-gray-100 dark:bg-zinc-800 w-10 h-10 ${className}`} />
+        );
+    }
 
     return (
         <motion.button
@@ -38,3 +64,4 @@ export default function ThemeToggle({ className = '' }) {
         </motion.button>
     );
 }
+
